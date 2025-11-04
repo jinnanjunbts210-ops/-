@@ -1,0 +1,100 @@
+﻿version: '3.8'
+
+services:
+  # MySQL鏁版嵁搴?
+  mysql:
+    image: mysql:8.0
+    container_name: cloud-disk-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: cloud_disk
+      MYSQL_USER: cloud_disk
+      MYSQL_PASSWORD: 123456
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./src/main/resources/db/migration/V1__Initial_Schema.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password
+    networks:
+      - cloud-disk-network
+
+  # Redis缂撳瓨
+  redis:
+    image: redis:7-alpine
+    container_name: cloud-disk-redis
+    restart: always
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - cloud-disk-network
+
+  # MinIO瀵硅薄瀛樺偍
+  minio:
+    image: minio/minio:latest
+    container_name: cloud-disk-minio
+    restart: always
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - cloud-disk-network
+
+  # 鍚庣搴旂敤
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloud-disk-app
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/cloud_disk?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: cloud_disk # 淇涓烘暟鎹簱鐢ㄦ埛
+      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6380
+      MINIO_ENDPOINT: http://minio:9000 # 纭繚 MINIO_ENDPOINT 鎸囧悜姝ｇ‘鐨勪富鏈哄悕鍜岀鍙?
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    depends_on:
+      - mysql
+      - redis
+      - minio
+    networks:
+      - cloud-disk-network
+
+  # 鍓嶇搴旂敤
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cloud-disk-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - app
+    networks:
+      - cloud-disk-network
+
+volumes:
+  mysql_data:
+  redis_data:
+  minio_data:
+
+networks:
+  cloud-disk-network:
+    driver: bridge
+
